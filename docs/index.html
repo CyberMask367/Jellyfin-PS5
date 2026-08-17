@@ -209,6 +209,128 @@
           container.appendChild(button);
         }
 
+        // The PS5 web-app runtime reports DualSense input as keyboard events
+        // (D-pad = arrows, Cross = Enter, Circle = Escape). Jellyfin's web
+        // Gamepad API is not available there, so provide TV-style focus
+        // navigation from those events directly.
+        function installPs5ControllerNavigation() {
+          var selector =
+            "a[href], button, input, select, textarea, [tabindex]:not([tabindex='-1']), .focusable";
+
+          function visible(element) {
+            var style;
+            if (!element || element.disabled || element.getAttribute("aria-hidden") === "true") return false;
+            style = window.getComputedStyle(element);
+            return element.offsetParent !== null && style.visibility !== "hidden" && style.display !== "none";
+          }
+
+          function controls() {
+            var all = document.querySelectorAll(selector);
+            var out = [];
+            var index;
+            for (index = 0; index < all.length; index++) {
+              // Keep the outer actionable element, not its nested icon/text.
+              var parent = all[index].parentElement;
+              var nested = false;
+              while (parent) {
+                if (parent.matches && parent.matches("a[href], button, input, select, textarea, [tabindex]:not([tabindex='-1'])")) {
+                  nested = true;
+                  break;
+                }
+                parent = parent.parentElement;
+              }
+              if (visible(all[index]) && !nested) {
+                out.push(all[index]);
+              }
+            }
+            return out;
+          }
+
+          function focus(element) {
+            if (!element) return null;
+            if (!element.hasAttribute("tabindex") && !/^(A|BUTTON|INPUT|SELECT|TEXTAREA)$/.test(element.tagName)) {
+              element.setAttribute("tabindex", "0");
+            }
+            element.focus();
+            try {
+              element.scrollIntoView({ block: "nearest", inline: "nearest" });
+            } catch (error) {
+              element.scrollIntoView(false);
+            }
+            return element;
+          }
+
+          function current(items) {
+            var active = document.activeElement;
+            if (items.indexOf(active) >= 0) return active;
+            return null;
+          }
+
+          function move(direction) {
+            var items = controls();
+            var from = current(items);
+            var origin;
+            var best;
+            var bestScore = Infinity;
+            var index;
+            if (!items.length) return;
+            if (!from) {
+              focus(items[0]);
+              return;
+            }
+            origin = from.getBoundingClientRect();
+            for (index = 0; index < items.length; index++) {
+              var candidate = items[index];
+              var rect;
+              var dx;
+              var dy;
+              var along;
+              var across;
+              var score;
+              if (candidate === from) continue;
+              rect = candidate.getBoundingClientRect();
+              dx = rect.left + rect.width / 2 - (origin.left + origin.width / 2);
+              dy = rect.top + rect.height / 2 - (origin.top + origin.height / 2);
+              if (direction === "left") { if (dx >= -4) continue; along = -dx; across = Math.abs(dy); }
+              if (direction === "right") { if (dx <= 4) continue; along = dx; across = Math.abs(dy); }
+              if (direction === "up") { if (dy >= -4) continue; along = -dy; across = Math.abs(dx); }
+              if (direction === "down") { if (dy <= 4) continue; along = dy; across = Math.abs(dx); }
+              score = along + across * 3;
+              if (score < bestScore) { best = candidate; bestScore = score; }
+            }
+            if (best) focus(best);
+          }
+
+          document.addEventListener("keydown", function (event) {
+            var key = event.key || "";
+            var code = event.keyCode || event.which;
+            var active = document.activeElement;
+            var isTextField = active && /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName);
+            var directions = { 37: "left", 38: "up", 39: "right", 40: "down", ArrowLeft: "left", ArrowUp: "up", ArrowRight: "right", ArrowDown: "down" };
+            var direction = directions[key] || directions[code];
+
+            if (direction) {
+              event.preventDefault();
+              event.stopPropagation();
+              move(direction);
+              return;
+            }
+            if ((key === "Enter" || code === 13) && !isTextField) {
+              event.preventDefault();
+              event.stopPropagation();
+              active = document.activeElement;
+              if (active && visible(active)) active.click();
+              else focus(controls()[0]);
+              return;
+            }
+            if ((key === "Escape" || key === "Esc" || code === 27) && !isTextField) {
+              event.preventDefault();
+              event.stopPropagation();
+              window.history.back();
+            }
+          }, true);
+        }
+
         document.addEventListener(
           "change",
           function (event) {
@@ -220,6 +342,7 @@
         lockLayoutSelector(document);
         addChangeServerButton(document);
         addUnavailableServerButton();
+        installPs5ControllerNavigation();
         if (window.MutationObserver) {
           new MutationObserver(function (records) {
             for (var recordIndex = 0; recordIndex < records.length; recordIndex++) {
