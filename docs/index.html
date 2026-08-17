@@ -179,6 +179,36 @@
           logoutButton.parentNode.insertBefore(button, logoutButton.nextSibling);
         }
 
+        function addUnavailableServerButton() {
+          var headings = document.querySelectorAll("h1, h2, h3, [role='heading']");
+          var heading;
+          var container;
+          var button;
+          var index;
+
+          for (index = 0; index < headings.length; index++) {
+            if (headings[index].textContent.replace(/\s+/g, " ").trim() === "Server Unavailable") {
+              heading = headings[index];
+              break;
+            }
+          }
+          if (!heading) return;
+
+          container = heading.parentNode;
+          if (!container || container.querySelector("[data-tv-unavailable-change-server]")) return;
+
+          button = document.createElement("a");
+          button.className = "emby-button raised button-submit show-focus";
+          button.href = "#/selectserver";
+          button.textContent = "Change Server";
+          button.setAttribute("data-tv-unavailable-change-server", "true");
+          button.style.display = "inline-flex";
+          button.style.marginTop = "2em";
+          button.style.minWidth = "12em";
+          button.style.justifyContent = "center";
+          container.appendChild(button);
+        }
+
         document.addEventListener(
           "change",
           function (event) {
@@ -189,6 +219,7 @@
 
         lockLayoutSelector(document);
         addChangeServerButton(document);
+        addUnavailableServerButton();
         if (window.MutationObserver) {
           new MutationObserver(function (records) {
             for (var recordIndex = 0; recordIndex < records.length; recordIndex++) {
@@ -198,6 +229,7 @@
                 addChangeServerButton(nodes[nodeIndex]);
               }
             }
+            addUnavailableServerButton();
           }).observe(document.documentElement, { childList: true, subtree: true });
         }
       })();
